@@ -1,3 +1,6 @@
+"""_init_.py
+"""
+
 from .__about__ import (
     __title__,
     __description__,
