@@ -1,69 +1,49 @@
 """Retriever
-Contains the Retriever class to load and combine vector stores from the data directory and make the similarity search.
+Contains the Retriever class to load the vector store and make similarity searches.
 """
-import os, logging
+
+import os
+import logging
 from utils.helpers import setup_logging
 from langchain_ollama import OllamaEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain.docstore.document import Document
 
 
 class Retriever:
-    """Retriever class to load and combine vector stores from the data directory and make the similarity search."""
+    """Retriever class to load the vector store and make similarity searches."""
     def __init__(self, log_file='retriever.log'):
         self.data_dir = "rag_project/data"
         self.log_file = os.path.join(self.data_dir, log_file)
         setup_logging(self.log_file)
         self.embeddings = OllamaEmbeddings(model="mxbai-embed-large")
+        self.vector_store_path = os.path.join(self.data_dir, 'vector_store')
 
-        self.docsearch = self.load_vector_stores()
+        self.docsearch = self.load_vector_store()
 
-    def load_vector_stores(self) -> FAISS:
+    def load_vector_store(self) -> FAISS:
         """
-        Loads all vector stores from the data directory and combines them.
+        Loads the vector store from the data directory.
         """
         try:
-            vector_store_dirs = []
-            for d in os.listdir(self.data_dir):
-                dir_path = os.path.join(self.data_dir, d)
-                if os.path.isdir(dir_path) and d != 'archive':
-                    index_faiss_path = os.path.join(dir_path, 'index.faiss')
-                    index_pkl_path = os.path.join(dir_path, 'index.pkl')
-                    if os.path.exists(index_faiss_path) and os.path.exists(index_pkl_path):
-                        vector_store_dirs.append(dir_path)
-                    else:
-                        logging.warning(f"No vector store files found in {dir_path}")
-                else:
-                    logging.debug(f"Skipping non-directory or archive: {dir_path}")
-
-            if not vector_store_dirs:
-                logging.error("No vector stores found in data directory.")
-                return None
-
-            all_docs = []
-            for dir_path in vector_store_dirs:
-                logging.info(f"Loading vector store from {dir_path}...")
+            if os.path.exists(self.vector_store_path):
+                logging.info(f"Loading vector store from {self.vector_store_path}...")
                 docsearch = FAISS.load_local(
-                    dir_path,
+                    self.vector_store_path,
                     self.embeddings,
                     index_name='index',
                     allow_dangerous_deserialization=True
                 )
-                docs = list(docsearch.docstore._dict.values())
-                all_docs.extend(docs)
-
-            if not all_docs:
-                logging.error("No documents found in any vector store.")
+                logging.info("Vector store loaded successfully.")
+                return docsearch
+            else:
+                logging.error("Vector store not found.")
                 return None
-
-            logging.info("Creating combined vector store...")
-            combined_docsearch = FAISS.from_documents(all_docs, self.embeddings)
-            logging.info("Combined vector store created successfully.")
-            return combined_docsearch
         except Exception as e:
-            logging.error(f"Failed to load and combine vector stores: {e}", exc_info=True)
+            logging.error(f"Failed to load vector store: {e}", exc_info=True)
             return None
 
-    def retrieve(self, query, k=5):
+    def retrieve(self, query, k):
         """
         Retrieves relevant documents for a given query.
         """

@@ -1,14 +1,15 @@
 """Indexer
-Contains a class to process PDF files and embed data into a vector store.
+Contains a class to process PDF files and embed data into a single, incrementally updatable vector store.
 After processing, files are moved to an archive.
 """
 
-import os, logging
+import os
+import logging
 
 from utils.helpers import setup_logging, archive_file
-from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS, SKLearnVectorStore
+from langchain_community.vectorstores import FAISS
 from langchain_ollama import OllamaEmbeddings
 
 
@@ -17,11 +18,13 @@ class Indexer:
         self.data_dir = "rag_project/data"
         self.log_file = os.path.join(self.data_dir, log_file)
         self.embeddings = OllamaEmbeddings(model="mxbai-embed-large")
+        self.vector_store_path = os.path.join(self.data_dir, 'vector_store')
         setup_logging(self.log_file)
 
-        return
-
     def run(self):
+        """
+        Main function to process all PDF files in the data directory.
+        """
         try:
             files = [f for f in os.listdir(self.data_dir) if f.lower().endswith('.pdf')]
         except FileNotFoundError:
@@ -32,7 +35,7 @@ class Indexer:
             return
 
         if not files:
-            logging.warning(f"No text files found in {self.data_dir}")
+            logging.warning(f"No PDF files found in {self.data_dir}")
             return
 
         for filename in files:
@@ -41,7 +44,7 @@ class Indexer:
 
     def append_vector_store(self, filename):
         """
-        Loads data, creates embeddings, and appends it to a vector store.
+        Loads data from a PDF file, creates embeddings, and appends it to the vector store.
         """
         file_path = os.path.join(self.data_dir, filename)
         try:
@@ -52,26 +55,39 @@ class Indexer:
             if not docs:
                 logging.warning(f"No content found in {file_path}")
                 return
-            
+
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,
                 chunk_overlap=200
             )
             chunks = text_splitter.split_documents(docs)
 
-            vector_store_path = os.path.join(self.data_dir, filename.split('.')[0])
-            vector_store = FAISS.from_documents(chunks, self.embeddings)
-            vector_store.save_local(vector_store_path)
+            # Load existing vector store or create a new one
+            if os.path.exists(self.vector_store_path):
+                logging.info("Loading existing vector store...")
+                vector_store = FAISS.load_local(
+                    self.vector_store_path,
+                    self.embeddings,
+                    index_name='index',
+                    allow_dangerous_deserialization=True
+                )
+                logging.info("Adding new documents to the vector store...")
+                vector_store.add_documents(chunks)
+            else:
+                logging.info("Creating new vector store...")
+                vector_store = FAISS.from_documents(chunks, self.embeddings)
 
-            logging.info(f"Saved vector store to {vector_store_path}")
+            # Save the updated vector store
+            vector_store.save_local(self.vector_store_path)
+            logging.info(f"Vector store saved to {self.vector_store_path}")
         except Exception as e:
             logging.error(f"Error processing file {filename}: {e}", exc_info=True)
 
         return
+
 
 if __name__ == "__main__":
     print("Starting indexing...")
     indexer = Indexer()
     indexer.run()
     print("Indexing completed.")
-    

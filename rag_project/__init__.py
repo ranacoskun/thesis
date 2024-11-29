@@ -10,8 +10,12 @@ from .__about__ import (
     __url__,
 )
 
-from .pdf_parser import PDFParser
+from .retriever import Retriever
+from .chatter import Chatter    
+from .indexer import Indexer
 
 __all__ = [
-    'PDFParser',
+    'Retriever',
+    'Chatter',
+    'Indexer',
 ]
